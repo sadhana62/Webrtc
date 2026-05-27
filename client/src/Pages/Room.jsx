@@ -52,24 +52,6 @@ export default function Room() {
 
     (async () => {
       try {
-        const peer = ensurePeer();
-
-        peer.onconnectionstatechange = () => {
-          console.log("[webrtc] connectionState", peer.connectionState);
-        };
-        peer.oniceconnectionstatechange = () => {
-          console.log("[webrtc] iceConnectionState", peer.iceConnectionState);
-        };
-
-        peer.onicecandidate = (event) => {
-          if (!event.candidate) return;
-          if (!socket || !roomId) return;
-          socket.emit("webrtc:ice-candidate", {
-            roomId,
-            candidate: event.candidate.toJSON?.() ?? event.candidate,
-          });
-        };
-
         await initLocalStream({ audio: true, video: true });
         if (!cancelled) {
           setMediaError("");
@@ -88,7 +70,7 @@ export default function Room() {
     return () => {
       cancelled = true;
     };
-  }, [ensurePeer, initLocalStream, socket, roomId]);
+  }, [initLocalStream]);
 
   useEffect(() => {
     if (!localVideoRef.current) return;
@@ -121,6 +103,23 @@ export default function Room() {
 
   useEffect(() => {
     if (!socket || !connected || !roomId) return;
+
+    const peer = ensurePeer();
+
+    peer.onicecandidate = (event) => {
+      if (!event.candidate) return;
+      socket.emit("webrtc:ice-candidate", {
+        roomId,
+        candidate: event.candidate.toJSON?.() ?? event.candidate,
+      });
+    };
+
+    peer.onconnectionstatechange = () => {
+      console.log("[webrtc] connectionState", peer.connectionState);
+    };
+    peer.oniceconnectionstatechange = () => {
+      console.log("[webrtc] iceConnectionState", peer.iceConnectionState);
+    };
 
     const onUserJoined = async ({ id } = {}) => {
       console.log("[webrtc] peer joined", id);
@@ -158,11 +157,11 @@ export default function Room() {
     const onReady = async ({ from } = {}) => {
       if (!from) return;
 
-      const peer = ensurePeer();
+      const currentPeer = ensurePeer();
       // A newly joined peer emits ready once. Existing peers should initiate.
       // Only create offers when stable to avoid overlapping negotiations.
-      if (peer.signalingState !== "stable") {
-        console.log("[webrtc] skipping offer, signalingState=", peer.signalingState);
+      if (currentPeer.signalingState !== "stable") {
+        console.log("[webrtc] skipping offer, signalingState=", currentPeer.signalingState);
         return;
       }
 
@@ -182,10 +181,10 @@ export default function Room() {
     socket.on("webrtc:ice-candidate", onIceCandidate);
     socket.on("webrtc:ready", onReady);
 
-    // Tell other peers we're ready to negotiate (handlers are installed at this point).
-    socket.emit("webrtc:ready", { roomId });
-
     return () => {
+      peer.onicecandidate = null;
+      peer.onconnectionstatechange = null;
+      peer.oniceconnectionstatechange = null;
       socket.off("room:user-joined", onUserJoined);
       socket.off("webrtc:offer", onOffer);
       socket.off("webrtc:answer", onAnswer);
@@ -204,6 +203,14 @@ export default function Room() {
     initLocalStream,
     localStream,
   ]);
+
+  // Emit ready only when media is fully initialized and socket is connected
+  useEffect(() => {
+    if (!socket || !connected || !roomId || !mediaReady) return;
+
+    console.log("[socket] emitting webrtc:ready", { roomId });
+    socket.emit("webrtc:ready", { roomId });
+  }, [socket, connected, roomId, mediaReady]);
 
   const toggleSelfAudio = () => {
     if (!localStream) return;

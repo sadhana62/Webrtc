@@ -4,41 +4,41 @@ import { io } from "socket.io-client";
 const SocketContext = createContext(null);
 
 export function SocketProvider({ children, url }) {
-  const socketRef = useRef(null);
+  const [socket, setSocket] = useState(null);
   const [connected, setConnected] = useState(false);
 
   useEffect(() => {
     const serverUrl = url || import.meta.env.VITE_SIGNALING_URL || "http://localhost:8000";
     console.log("[socket] connecting to", serverUrl);
-    const socket = io(serverUrl, {
+    const socketInstance = io(serverUrl, {
       autoConnect: true,
     });
 
-    socketRef.current = socket;
+    setSocket(socketInstance);
 
     const onConnect = () => setConnected(true);
     const onDisconnect = () => setConnected(false);
     const onConnectError = (err) => console.log("[socket] connect_error", err?.message || err);
 
-    socket.on("connect", onConnect);
-    socket.on("disconnect", onDisconnect);
-    socket.on("connect_error", onConnectError);
+    socketInstance.on("connect", onConnect);
+    socketInstance.on("disconnect", onDisconnect);
+    socketInstance.on("connect_error", onConnectError);
 
     return () => {
-      socket.off("connect", onConnect);
-      socket.off("disconnect", onDisconnect);
-      socket.off("connect_error", onConnectError);
-      socket.disconnect();
-      socketRef.current = null;
+      socketInstance.off("connect", onConnect);
+      socketInstance.off("disconnect", onDisconnect);
+      socketInstance.off("connect_error", onConnectError);
+      socketInstance.disconnect();
+      setSocket(null);
     };
   }, [url]);
 
   const value = useMemo(
     () => ({
-      socket: socketRef.current,
+      socket,
       connected,
     }),
-    [connected],
+    [socket, connected],
   );
 
   return <SocketContext.Provider value={value}>{children}</SocketContext.Provider>;

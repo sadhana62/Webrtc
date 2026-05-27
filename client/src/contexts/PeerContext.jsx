@@ -75,7 +75,8 @@ export function PeerProvider({ children }) {
       console.log("[webrtc] ontrack event received", event);
       const [remoteStreamFromEvent] = event.streams;
       if (remoteStreamFromEvent) {
-        setRemoteStream(remoteStreamFromEvent);
+        // Wrap tracks in a new MediaStream to ensure React detects reference change and triggers re-render
+        setRemoteStream(new MediaStream(remoteStreamFromEvent.getTracks()));
       } else {
         // Fallback: manually aggregate tracks into a new MediaStream to trigger React re-renders.
         setRemoteStream((prev) => {
