@@ -27,6 +27,14 @@ export function PeerProvider({ children }) {
   const [localStream, setLocalStream] = useState(null);
   const [remoteStream, setRemoteStream] = useState(null);
 
+  const onIceCandidateRef = useRef(null);
+  const onConnectionStateChangeRef = useRef(null);
+
+  const setPeerCallbacks = useCallback(({ onIceCandidate, onConnectionStateChange }) => {
+    onIceCandidateRef.current = onIceCandidate;
+    onConnectionStateChangeRef.current = onConnectionStateChange;
+  }, []);
+
   useEffect(() => {
     localStreamRef.current = localStream;
   }, [localStream]);
@@ -75,17 +83,30 @@ export function PeerProvider({ children }) {
       console.log("[webrtc] ontrack event received", event);
       const [remoteStreamFromEvent] = event.streams;
       if (remoteStreamFromEvent) {
-        // Wrap tracks in a new MediaStream to ensure React detects reference change and triggers re-render
-        setRemoteStream(new MediaStream(remoteStreamFromEvent.getTracks()));
+        // Direct state assignment so the reference is completely stable, avoiding resets
+        setRemoteStream(remoteStreamFromEvent);
       } else {
-        // Fallback: manually aggregate tracks into a new MediaStream to trigger React re-renders.
+        // Fallback: manually aggregate tracks
         setRemoteStream((prev) => {
-          const stream = prev && prev.constructor.name === "MediaStream" ? prev : new MediaStream();
+          const stream = prev || new MediaStream();
           if (!stream.getTracks().some((t) => t.id === event.track.id)) {
             stream.addTrack(event.track);
           }
-          return new MediaStream(stream.getTracks());
+          return stream;
         });
+      }
+    };
+
+    peer.onicecandidate = (event) => {
+      if (onIceCandidateRef.current) {
+        onIceCandidateRef.current(event);
+      }
+    };
+
+    peer.onconnectionstatechange = () => {
+      console.log("[webrtc] connectionState:", peer.connectionState);
+      if (onConnectionStateChangeRef.current) {
+        onConnectionStateChangeRef.current(peer.connectionState);
       }
     };
 
@@ -104,7 +125,28 @@ export function PeerProvider({ children }) {
       }
     }
 
-    const stream = await navigator.mediaDevices.getUserMedia(constraints);
+    let stream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia(constraints);
+    } catch (err) {
+      console.log("[webrtc] getUserMedia failed with constraints, trying fallback", err);
+      if (constraints.audio && constraints.video) {
+        try {
+          // Try video only fallback
+          stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: true });
+        } catch {
+          try {
+            // Try audio only fallback
+            stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+          } catch (fallbackErr) {
+            // Both failed, throw original error
+            throw err;
+          }
+        }
+      } else {
+        throw err;
+      }
+    }
 
     if (previousStream) {
       previousStream.getTracks().forEach((track) => track.stop());
@@ -118,8 +160,8 @@ export function PeerProvider({ children }) {
 
     for (const sender of senders) {
       if (!sender.track) continue;
-      if (sender.track.kind === "video" && !constraints.video) continue;
-      if (sender.track.kind === "audio" && !constraints.audio) continue;
+      if (sender.track.kind === "video" && !hasLiveTrack(stream, "video")) continue;
+      if (sender.track.kind === "audio" && !hasLiveTrack(stream, "audio")) continue;
       try {
         await sender.replaceTrack(null);
       } catch {
@@ -150,16 +192,7 @@ export function PeerProvider({ children }) {
     return stream;
   }, [ensurePeer]);
 
-  useEffect(() => {
-    const peer = peerRef.current;
-    if (!peer || !localStream) return;
 
-    const existingSenders = new Set(peer.getSenders().map((s) => s.track?.id).filter(Boolean));
-    for (const track of localStream.getTracks()) {
-      if (existingSenders.has(track.id)) continue;
-      peer.addTrack(track, localStream);
-    }
-  }, [localStream]);
 
   const createOffer = useCallback(async () => {
     const peer = ensurePeer();
@@ -205,6 +238,23 @@ export function PeerProvider({ children }) {
     pendingIceCandidatesRef.current = [];
     setRemoteStream(null);
   }, []);
+
+  const resetPeerConnection = useCallback(() => {
+    console.log("[webrtc] resetting peer connection");
+    closePeer();
+    const peer = ensurePeer();
+    
+    // Automatically re-add local stream tracks if they exist
+    const stream = localStreamRef.current;
+    if (stream) {
+      console.log("[webrtc] re-adding local tracks to new peer connection");
+      for (const track of stream.getTracks()) {
+        const sender = peer.addTrack(track, stream);
+        if (track.kind === "video") videoSenderRef.current = sender;
+      }
+    }
+    return peer;
+  }, [closePeer, ensurePeer]);
 
   const stopLocalStream = useCallback(() => {
     const stream = localStreamRef.current;
@@ -299,6 +349,85 @@ export function PeerProvider({ children }) {
     [ensurePeer, initLocalStream, replaceLocalStream],
   );
 
+  const setLocalAudioEnabled = useCallback(
+    async (enabled) => {
+      const peer = ensurePeer();
+
+      if (!enabled) {
+        const stream = localStreamRef.current;
+        if (!stream) return false;
+
+        const activeAudioSenders = peer.getSenders().filter((s) => s.track?.kind === "audio");
+        for (const sender of activeAudioSenders) {
+          try {
+            await sender.replaceTrack(null);
+          } catch {
+            // ignore
+          }
+        }
+
+        const remainingTracks = stream.getVideoTracks();
+        for (const track of stream.getAudioTracks()) {
+          try {
+            stream.removeTrack(track);
+          } catch {
+            // ignore
+          }
+          try {
+            track.stop();
+          } catch {
+            // ignore
+          }
+        }
+
+        replaceLocalStream(remainingTracks);
+        return true;
+      }
+
+      // Enable audio
+      const stream = localStreamRef.current;
+      if (!stream) {
+        await initLocalStream({ audio: true, video: true });
+        return true;
+      }
+
+      const existingLive = stream
+        .getAudioTracks()
+        .find((t) => t.readyState !== "ended" && t.enabled !== false);
+      if (existingLive) {
+        const sender = peer.getSenders().find((s) => s.track?.kind === "audio") ?? null;
+        if (sender) {
+          try {
+            if (sender.track !== existingLive) await sender.replaceTrack(existingLive);
+          } catch {
+            // ignore
+          }
+        }
+        return true;
+      }
+
+      const micStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+      const [audioTrack] = micStream.getAudioTracks();
+      if (!audioTrack) return false;
+
+      const nextStream = replaceLocalStream([...stream.getVideoTracks(), audioTrack]);
+
+      const sender = peer.getSenders().find((s) => s.track?.kind === "audio") ?? null;
+      if (sender) {
+        try {
+          await sender.replaceTrack(audioTrack);
+        } catch {
+          // ignore
+        }
+      } else {
+        peer.addTrack(audioTrack, nextStream);
+      }
+
+      return true;
+    },
+    [ensurePeer, initLocalStream, replaceLocalStream],
+  );
+
   useEffect(() => {
     return () => {
       closePeer();
@@ -321,7 +450,10 @@ export function PeerProvider({ children }) {
       addIceCandidate,
       stopLocalStream,
       setLocalVideoEnabled,
+      setLocalAudioEnabled,
       closePeer,
+      resetPeerConnection,
+      setPeerCallbacks,
     }),
     [
       ensurePeer,
@@ -334,7 +466,10 @@ export function PeerProvider({ children }) {
       addIceCandidate,
       stopLocalStream,
       setLocalVideoEnabled,
+      setLocalAudioEnabled,
       closePeer,
+      resetPeerConnection,
+      setPeerCallbacks,
     ],
   );
 

@@ -15,6 +15,15 @@ const io = new Server(server, {
 io.on("connection", (socket) => {
   console.log("[socket] connected", socket.id);
 
+  socket.on("disconnecting", () => {
+    console.log("[socket] disconnecting", socket.id);
+    for (const room of socket.rooms) {
+      if (room !== socket.id) {
+        socket.to(room).emit("room:user-left", { id: socket.id });
+      }
+    }
+  });
+
   socket.on("disconnect", (reason) => {
     console.log("[socket] disconnected", socket.id, reason);
   });
@@ -52,6 +61,18 @@ io.on("connection", (socket) => {
     if (!roomId) return;
     console.log("[socket] webrtc:ready", { from: socket.id, roomId });
     socket.to(roomId).emit("webrtc:ready", { from: socket.id });
+  });
+
+  socket.on("webrtc:media-toggle", ({ roomId, kind, enabled } = {}) => {
+    if (!roomId) return;
+    console.log("[socket] webrtc:media-toggle", { from: socket.id, roomId, kind, enabled });
+    socket.to(roomId).emit("webrtc:media-toggle", { from: socket.id, kind, enabled });
+  });
+
+  socket.on("chat:message", ({ roomId, message, sender, timestamp } = {}) => {
+    if (!roomId || !message) return;
+    console.log("[socket] chat:message", { from: socket.id, roomId, message, sender });
+    socket.to(roomId).emit("chat:message", { from: socket.id, message, sender, timestamp });
   });
 });
 
