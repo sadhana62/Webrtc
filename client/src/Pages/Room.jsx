@@ -364,19 +364,17 @@ export default function Room() {
   };
 
   return (
-    <main className="container" style={{ position: "relative", minHeight: "90vh" }}>
-      <header className="pageHeader" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 16 }}>
-        <div>
-          <h1 className="title" style={{ fontSize: "28px", fontWeight: 800, background: "linear-gradient(135deg, #3b82f6, #8b5cf6)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>
-            WebRTC Conference
-          </h1>
-          <p className="subtitle" style={{ marginTop: 4 }}>
-            Room: <code style={{ color: "#4f46e5", fontWeight: 600 }}>{roomId}</code>
-            {email ? <> • Connected as: <code>{email}</code></> : null}
+    <main className="roomContainer">
+      <header className="roomHeader">
+        <div className="roomTitleWrapper">
+          <h1 className="roomTitle">WebRTC Conference</h1>
+          <p className="roomSubtitle">
+            Room: <code className="roomCode">{roomId}</code>
+            {email ? <> • Connected as: <code className="emailCode">{email}</code></> : null}
           </p>
         </div>
 
-        <div style={{ display: "flex", gap: 8 }}>
+        <div className="statusIndicatorsGroup">
           <div className="statusIndicator">
             <span className={`statusDot ${connected ? "connected" : "disconnected"}`} />
             <span>Socket: {connected ? "Connected" : "Disconnected"}</span>
@@ -388,44 +386,18 @@ export default function Room() {
         </div>
       </header>
 
-      <section className="roomCard" style={{ marginTop: 20 }}>
+      <section className="roomCard">
         {mediaError ? (
-          <div
-            style={{
-              marginBottom: 20,
-              padding: "12px 18px",
-              borderRadius: 14,
-              background: "#fef2f2",
-              border: "1px solid #fecaca",
-              color: "#b91c1c",
-              fontWeight: 600,
-              fontSize: "14px",
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center"
-            }}
-          >
+          <div className="mediaErrorBanner">
             <span>Media Error: <code>{mediaError}</code></span>
-            <button
-              onClick={retryMedia}
-              style={{
-                background: "#ef4444",
-                color: "#fff",
-                border: 0,
-                padding: "4px 10px",
-                borderRadius: 8,
-                fontSize: "12px",
-                fontWeight: 700,
-                cursor: "pointer"
-              }}
-            >
+            <button onClick={retryMedia} className="mediaErrorResolveBtn">
               Resolve
             </button>
           </div>
         ) : null}
 
         <div className={`roomLayout ${showChat ? "withChat" : ""}`}>
-          <div className="videoFeedContainer" style={{ margin: 0, marginBottom: 0 }}>
+          <div className="videoFeedContainer">
             {/* Local User Feed */}
             <div className="videoWrapper">
               <div className="videoOverlay">You {email ? `(${email.split("@")[0]})` : ""}</div>
@@ -463,18 +435,18 @@ export default function Room() {
                   playsInline
                 />
               ) : remoteStream ? (
-                <div className="placeholderOverlay" style={{ background: "#0b0f19" }}>
-                  <div className="avatarCircle" style={{ background: "linear-gradient(135deg, #374151, #1f2937)", boxShadow: "0 8px 16px rgba(0,0,0,0.2)" }}>
+                <div className="placeholderOverlay remotePlaceholder">
+                  <div className="avatarCircle remoteAvatar">
                     👤
                   </div>
-                  <div style={{ color: "#9ca3af" }}>Camera Turned Off</div>
+                  <div className="placeholderText">Camera Turned Off</div>
                 </div>
               ) : (
-                <div className="placeholderOverlay" style={{ background: "#0b0f19" }}>
-                  <div className="avatarCircle" style={{ background: "linear-gradient(135deg, #6b7280, #374151)", boxShadow: "0 8px 16px rgba(0,0,0,0.2)" }}>
+                <div className="placeholderOverlay remotePlaceholder">
+                  <div className="avatarCircle remoteAvatar">
                     👤
                   </div>
-                  <div style={{ color: "#9ca3af" }}>Waiting for Remote Video...</div>
+                  <div className="placeholderText">Waiting for Remote Video...</div>
                 </div>
               )}
             </div>
@@ -485,7 +457,8 @@ export default function Room() {
               <span>Room Chat</span>
               <button 
                 onClick={handleToggleChat} 
-                style={{ background: "none", border: 0, fontSize: "16px", cursor: "pointer", color: "#6b7280" }}
+                className="chatCloseBtn"
+                aria-label="Close Chat"
               >
                 ✕
               </button>
@@ -562,13 +535,12 @@ export default function Room() {
               <span className="tooltip">{showChat ? "Hide Chat" : "Show Chat"}</span>
             </button>
 
-            <div style={{ width: "1px", height: "24px", background: "rgba(255, 255, 255, 0.2)" }} />
+            <div className="toolbarDivider" />
 
             <button
               type="button"
               onClick={handleExitCall}
-              className="toolbarBtn danger"
-              style={{ background: "#dc2626", border: "1px solid #ef4444" }}
+              className="toolbarBtn danger disconnectBtn"
               aria-label="End Call"
             >
               <span>📞</span>
