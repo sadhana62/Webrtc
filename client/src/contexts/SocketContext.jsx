@@ -8,7 +8,13 @@ export function SocketProvider({ children, url }) {
   const [connected, setConnected] = useState(false);
 
   useEffect(() => {
-    const serverUrl = url || import.meta.env.VITE_SIGNALING_URL || "http://localhost:8000";
+    let serverUrl = url || import.meta.env.VITE_SIGNALING_URL || "http://localhost:8000";
+
+    // Automatically resolve localhost to the current hostname when testing on a mobile/external device
+    if (serverUrl.includes("localhost") && window.location.hostname !== "localhost") {
+      serverUrl = serverUrl.replace("localhost", window.location.hostname);
+    }
+
     console.log("[socket] connecting to", serverUrl);
     const socketInstance = io(serverUrl, {
       autoConnect: true,

@@ -38,6 +38,7 @@ export default function Room() {
   const [messages, setMessages] = useState([]);
   const [chatInput, setChatInput] = useState("");
   const [showChat, setShowChat] = useState(false);
+  const [peerConnectionState, setPeerConnectionState] = useState("");
   const [unreadCount, setUnreadCount] = useState(0);
   const [toastNotification, setToastNotification] = useState(null);
 
@@ -165,9 +166,13 @@ export default function Room() {
       },
       onConnectionStateChange: (state) => {
         console.log("[webrtc] connectionState changed:", state);
+        setPeerConnectionState(state);
+        if (state === "disconnected" || state === "failed" || state === "closed") {
+          resetPeerConnection();
+        }
       },
     });
-  }, [socket, roomId, setPeerCallbacks]);
+  }, [socket, roomId, setPeerCallbacks, resetPeerConnection]);
 
   useEffect(() => {
     if (!socket || !connected || !roomId) return;
@@ -179,6 +184,7 @@ export default function Room() {
     const onUserLeft = ({ id } = {}) => {
       console.log("[webrtc] peer left", id);
       resetPeerConnection();
+      setPeerConnectionState("disconnected");
       setRemoteVideoOn(true);
       setRemoteAudioOn(true);
     };
@@ -244,7 +250,7 @@ export default function Room() {
       if (!showChatRef.current) {
         setUnreadCount((prev) => prev + 1);
         setToastNotification({
-          sender: payload.sender.split("@")[0],
+          sender: (payload.sender || "Anonymous").split("@")[0],
           message: payload.message,
           id: Date.now(),
         });
@@ -446,7 +452,11 @@ export default function Room() {
                   <div className="avatarCircle remoteAvatar">
                     👤
                   </div>
-                  <div className="placeholderText">Waiting for Remote Video...</div>
+                  <div className="placeholderText">
+                    {peerConnectionState === "disconnected" || peerConnectionState === "failed" || peerConnectionState === "closed"
+                      ? "Remote Peer Disconnected"
+                      : "Waiting for Remote Video..."}
+                  </div>
                 </div>
               )}
             </div>
@@ -466,7 +476,7 @@ export default function Room() {
             <div className="chatMessages">
               {messages.map((msg, index) => (
                 <div key={index} className={`chatMessage ${msg.self ? "self" : "other"}`}>
-                  {!msg.self && <span className="messageSender">{msg.sender.split("@")[0]}</span>}
+                  {!msg.self && <span className="messageSender">{(msg.sender || "Anonymous").split("@")[0]}</span>}
                   <span>{msg.message}</span>
                   <span className="messageTime">{msg.timestamp}</span>
                 </div>
@@ -530,7 +540,7 @@ export default function Room() {
             >
               <span>💬</span>
               {unreadCount > 0 && (
-                <span className="unreadBadge">{unreadCount}</span>
+                <span className="unreadBadge" />
               )}
               <span className="tooltip">{showChat ? "Hide Chat" : "Show Chat"}</span>
             </button>

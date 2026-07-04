@@ -732,19 +732,13 @@ code {
 /* Pulsing Badge on chat toolbar icon */
 .unreadBadge {
   position: absolute;
-  top: -2px;
-  right: -2px;
+  top: 4px;
+  right: 4px;
   background: var(--danger);
-  color: #ffffff;
-  font-size: 9px;
-  font-weight: 800;
-  width: 16px;
-  height: 16px;
+  width: 10px;
+  height: 10px;
   border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border: 2px solid #0f172a;
+  border: 1.5px solid #0f172a;
   box-shadow: 0 0 6px var(--danger);
   animation: badgePulse 2s infinite;
 }
@@ -971,7 +965,7 @@ code {
     bottom: 0;
     left: 0;
     right: 0;
-    z-index: 999;
+    z-index: 1100;
     border-radius: 20px 20px 0 0;
     border-bottom: 0;
     max-height: 60vh;
